@@ -1,0 +1,19 @@
+{
+  "name": "chaoshan-translator",
+  "version": "1.0.0",
+  "description": "A small web translator for Chaoshan/Teochew text and speech.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^2.0.2",
+    "openai": "^4.77.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>潮汕话翻译器</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <script src="/app.js?v=20260512-2" defer></script>
+  </head>
+  <body>
+    <section class="auth-screen" id="auth-screen">
+      <form class="auth-box" id="auth-form">
+        <p class="eyebrow">Private Access</p>
+        <h2>输入访问密码</h2>
+        <label>
+          密码
+          <input id="access-password" type="password" autocomplete="current-password" placeholder="请输入密码" />
+        </label>
+        <button class="primary" type="submit">
+          <i data-lucide="lock-keyhole"></i>
+          进入
+        </button>
+        <p class="auth-error" id="auth-error"></p>
+      </form>
+    </section>
+
+    <main class="app-shell">
+      <section class="workspace" aria-labelledby="app-title">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Chaoshan Translator</p>
+            <h1 id="app-title">潮汕话翻译器</h1>
+          </div>
+          <div class="status-pill" id="service-status">
+            <span class="status-dot"></span>
+            <span>检查服务中</span>
+          </div>
+        </header>
+
+        <div class="mode-tabs" role="tablist" aria-label="翻译方式">
+          <button class="tab is-active" id="text-tab" role="tab" aria-selected="true" aria-controls="text-panel">
+            <i data-lucide="keyboard"></i>
+            文字
+          </button>
+          <button class="tab" id="voice-tab" role="tab" aria-selected="false" aria-controls="voice-panel">
+            <i data-lucide="mic"></i>
+            语音
+          </button>
+        </div>
+
+        <section class="panel" id="text-panel" role="tabpanel" aria-labelledby="text-tab">
+          <div class="controls-row">
+            <label>
+              翻译方向
+              <select id="direction">
+                <option value="chaoshan-to-mandarin">潮汕话 -> 普通话</option>
+                <option value="mandarin-to-chaoshan">普通话 -> 潮汕话</option>
+              </select>
+            </label>
+            <label>
+              地区偏好
+              <select id="variant">
+                <option value="auto">自动判断</option>
+                <option value="shantou">汕头</option>
+                <option value="chaozhou">潮州</option>
+                <option value="jieyang">揭阳</option>
+                <option value="chaoyang">潮阳/潮南</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="text-entry">
+            <span>输入内容</span>
+            <textarea id="source-text" rows="8" placeholder="例如：食未？胶己人，爱来坐。"></textarea>
+          </label>
+
+          <div class="action-row">
+            <button class="primary" id="translate-button">
+              <i data-lucide="languages"></i>
+              翻译
+            </button>
+            <button class="ghost" id="clear-button" title="清空">
+              <i data-lucide="eraser"></i>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel is-hidden" id="voice-panel" role="tabpanel" aria-labelledby="voice-tab">
+          <div class="controls-row">
+            <label>
+              地区偏好
+              <select id="voice-variant">
+                <option value="auto">自动判断</option>
+                <option value="shantou">汕头</option>
+                <option value="chaozhou">潮州</option>
+                <option value="jieyang">揭阳</option>
+                <option value="chaoyang">潮阳/潮南</option>
+              </select>
+            </label>
+            <label>
+              上传音频
+              <input id="audio-file" type="file" accept="audio/*" />
+            </label>
+          </div>
+
+          <div class="recorder">
+            <button class="record-button" id="record-button" title="开始录音">
+              <i data-lucide="mic"></i>
+            </button>
+            <div>
+              <p id="recording-state">点击麦克风开始录音</p>
+              <span id="recording-time">00:00</span>
+            </div>
+          </div>
+
+          <audio id="audio-preview" controls class="is-hidden"></audio>
+
+          <div class="action-row">
+            <button class="primary" id="voice-submit-button">
+              <i data-lucide="send"></i>
+              识别并翻译
+            </button>
+            <button class="ghost" id="voice-clear-button" title="清空音频">
+              <i data-lucide="trash-2"></i>
+            </button>
+          </div>
+        </section>
+      </section>
+
+      <aside class="result-pane" aria-live="polite">
+        <div class="result-header">
+          <p class="eyebrow">Result</p>
+          <h2>翻译结果</h2>
+        </div>
+
+        <div class="result-block">
+          <span id="source-output-label">原文/转写</span>
+          <p id="source-output">等待输入</p>
+        </div>
+        <div class="result-block result-main">
+          <span id="translated-output-label">普通话/潮汕话</span>
+          <p id="translated-output">翻译会显示在这里</p>
+        </div>
+        <div class="result-grid">
+          <div class="result-block">
+            <span id="pronunciation-output-label">读音</span>
+            <p id="pronunciation-output">-</p>
+          </div>
+          <div class="result-block">
+            <span id="confidence-output-label">置信度</span>
+            <p id="confidence-output">-</p>
+          </div>
+        </div>
+        <div class="result-block">
+          <span id="notes-output-label">备注</span>
+          <p id="notes-output">可显示词义、语气和不确定处</p>
+        </div>
+      </aside>
+    </main>
+  </body>
+</html>
