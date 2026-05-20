@@ -238,18 +238,25 @@ async function transcribeAudio(filePath, file) {
 }
 
 async function transcribeWithOpenAIAudio(filePath) {
+  const controller = new AbortController();
+
   try {
-    const response = await openai.audio.transcriptions.create(
-      {
-        file: fs.createReadStream(filePath),
-        model: remoteTranscribeModel,
-        language: 'zh',
-        prompt:
-          '这是一段潮汕话、潮州话、汕头话、揭阳话或潮阳话语音。请尽量保留方言词，输出中文转写。'
-      },
-      {
-        timeout: remoteTranscribeTimeoutMs
-      }
+    const response = await withTimeout(
+      openai.audio.transcriptions.create(
+        {
+          file: fs.createReadStream(filePath),
+          model: remoteTranscribeModel,
+          language: 'zh',
+          prompt:
+            '这是一段潮汕话、潮州话、汕头话、揭阳话或潮阳话语音。请尽量保留方言词，输出中文转写。'
+        },
+        {
+          signal: controller.signal,
+          timeout: remoteTranscribeTimeoutMs
+        }
+      ),
+      remoteTranscribeTimeoutMs,
+      () => controller.abort()
     );
 
     return response.text?.trim() || '';
@@ -270,6 +277,19 @@ async function transcribeWithOpenAIAudio(filePath) {
 
     throw error;
   }
+}
+
+function withTimeout(promise, timeoutMs, onTimeout) {
+  let timeoutId;
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      if (onTimeout) onTimeout();
+      reject(new Error(`Request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 }
 
 async function transcribeWithLocalWhisper(filePath, file) {
