@@ -60,6 +60,10 @@ const localWhisperTimeoutMs = readPositiveInteger(
   process.env.LOCAL_WHISPER_TIMEOUT_MS,
   5 * 60 * 1000
 );
+const remoteTranscribeTimeoutMs = readPositiveInteger(
+  process.env.OPENAI_TRANSCRIBE_TIMEOUT_MS || process.env.AI_TRANSCRIBE_TIMEOUT_MS,
+  45 * 1000
+);
 const speechMode = getSpeechMode();
 
 function normalizeApiBaseUrl(value) {
@@ -144,6 +148,7 @@ app.get('/api/health', (_req, res) => {
     speechMode,
     speechConfigured: speechMode !== 'disabled',
     transcribeModel: remoteTranscribeModel || null,
+    transcribeTimeoutMs: speechMode === 'openai-audio' ? remoteTranscribeTimeoutMs : null,
     localWhisper: localWhisperEnabled
       ? {
           engine: localWhisperEngine,
@@ -233,15 +238,38 @@ async function transcribeAudio(filePath, file) {
 }
 
 async function transcribeWithOpenAIAudio(filePath) {
-  const response = await openai.audio.transcriptions.create({
-    file: fs.createReadStream(filePath),
-    model: remoteTranscribeModel,
-    language: 'zh',
-    prompt:
-      '这是一段潮汕话、潮州话、汕头话、揭阳话或潮阳话语音。请尽量保留方言词，输出中文转写。'
-  });
+  try {
+    const response = await openai.audio.transcriptions.create(
+      {
+        file: fs.createReadStream(filePath),
+        model: remoteTranscribeModel,
+        language: 'zh',
+        prompt:
+          '这是一段潮汕话、潮州话、汕头话、揭阳话或潮阳话语音。请尽量保留方言词，输出中文转写。'
+      },
+      {
+        timeout: remoteTranscribeTimeoutMs
+      }
+    );
 
-  return response.text?.trim() || '';
+    return response.text?.trim() || '';
+  } catch (error) {
+    const message = String(error?.message || error || '');
+
+    if (/timeout|timed out|aborted/i.test(message)) {
+      throw new Error(
+        `远程语音识别超过 ${Math.round(remoteTranscribeTimeoutMs / 1000)} 秒没有返回。请确认当前供应商支持 /v1/audio/transcriptions，或换用支持语音识别的 OpenAI 兼容服务。`
+      );
+    }
+
+    if (/404|not found|unsupported|unknown|audio|transcription|transcribe/i.test(message)) {
+      throw new Error(
+        `当前供应商可能不支持 OpenAI 语音识别接口 /v1/audio/transcriptions。原始错误：${message}`
+      );
+    }
+
+    throw error;
+  }
 }
 
 async function transcribeWithLocalWhisper(filePath, file) {

@@ -28,6 +28,7 @@ OPENAI_API_KEY=你的 OpenAI API Key
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-5.5
 OPENAI_TRANSCRIBE_MODEL=gpt-4o-transcribe
+OPENAI_TRANSCRIBE_TIMEOUT_MS=45000
 ```
 
 `OPENAI_BASE_URL` 可以填 OpenAI 兼容服务的 `/v1` 地址，也可以填完整的 `/v1/chat/completions`，服务启动时会自动归一化。
