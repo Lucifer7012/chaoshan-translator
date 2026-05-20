@@ -24,14 +24,22 @@ http://localhost:5173
 推荐配置：
 
 ```env
-OPENAI_API_KEY=你的 OpenAI API Key
+OPENAI_API_KEY=你的文字模型 API Key
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-5.5
-OPENAI_TRANSCRIBE_MODEL=gpt-4o-transcribe
-OPENAI_TRANSCRIBE_TIMEOUT_MS=45000
+APP_PASSWORD=给朋友使用的访问密码
+
+TRANSCRIBE_PROVIDER=dashscope-fun-asr
+DASHSCOPE_API_KEY=你的百炼 API Key
+DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/api/v1
+DASHSCOPE_ASR_MODEL=fun-asr
+DASHSCOPE_ASR_TIMEOUT_MS=90000
+APP_PUBLIC_URL=https://你的服务名.onrender.com
 ```
 
 `OPENAI_BASE_URL` 可以填 OpenAI 兼容服务的 `/v1` 地址，也可以填完整的 `/v1/chat/completions`，服务启动时会自动归一化。
+
+语音识别可以单独走百炼 Fun-ASR。Fun-ASR 需要公网可访问的音频 URL，部署到 Render 后请把 `APP_PUBLIC_URL` 填成 Render 给你的 `https://...onrender.com` 地址。
 
 没有配置 API Key 时，文字翻译会进入示例模式，只支持少量常见短句；语音翻译还需要本地 Whisper 或远程语音识别模型。
 

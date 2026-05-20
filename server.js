@@ -1,5 +1,6 @@
 import 'dotenv/config';
 
+import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -16,6 +17,9 @@ const __dirname = path.dirname(__filename);
 const execFileAsync = promisify(execFile);
 
 const app = express();
+app.set('trust proxy', true);
+
+const asrPublicDir = path.join(__dirname, 'uploads', 'asr-public');
 const upload = multer({
   dest: path.join(__dirname, 'uploads'),
   limits: {
@@ -47,6 +51,12 @@ const remoteTranscribeModel =
   process.env.OPENAI_TRANSCRIBE_MODEL ||
   process.env.AI_TRANSCRIBE_MODEL ||
   (usesDefaultOpenAIBaseUrl ? 'gpt-4o-transcribe' : '');
+const transcribeProvider = (process.env.TRANSCRIBE_PROVIDER || '').trim().toLowerCase();
+const dashscopeApiKey = process.env.DASHSCOPE_API_KEY || process.env.TRANSCRIBE_API_KEY || '';
+const dashscopeBaseUrl = normalizeBaseUrl(
+  process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/api/v1'
+);
+const dashscopeAsrModel = process.env.DASHSCOPE_ASR_MODEL || process.env.TRANSCRIBE_MODEL || 'fun-asr';
 const localWhisperEnabled = readBoolean(process.env.LOCAL_WHISPER_ENABLED, false);
 const localWhisperEngine = (process.env.LOCAL_WHISPER_ENGINE || 'transformers').trim().toLowerCase();
 const localWhisperCommand = process.env.LOCAL_WHISPER_COMMAND || 'whisper';
@@ -64,12 +74,20 @@ const remoteTranscribeTimeoutMs = readPositiveInteger(
   process.env.OPENAI_TRANSCRIBE_TIMEOUT_MS || process.env.AI_TRANSCRIBE_TIMEOUT_MS,
   45 * 1000
 );
+const dashscopeAsrTimeoutMs = readPositiveInteger(
+  process.env.DASHSCOPE_ASR_TIMEOUT_MS || process.env.TRANSCRIBE_TIMEOUT_MS,
+  90 * 1000
+);
 const speechMode = getSpeechMode();
 
-function normalizeApiBaseUrl(value) {
+function normalizeBaseUrl(value) {
   if (!value) return '';
 
-  return value.trim().replace(/\/+$/, '').replace(/\/chat\/completions$/, '');
+  return value.trim().replace(/\/+$/, '');
+}
+
+function normalizeApiBaseUrl(value) {
+  return normalizeBaseUrl(value).replace(/\/chat\/completions$/, '');
 }
 
 function parseJsonObject(content) {
@@ -103,6 +121,7 @@ function readPositiveInteger(value, defaultValue) {
 
 function getSpeechMode() {
   if (localWhisperEnabled) return `local-whisper-${localWhisperEngine}`;
+  if (transcribeProvider === 'dashscope-fun-asr' && dashscopeApiKey) return 'dashscope-fun-asr';
   if (openai && remoteTranscribeModel) return 'openai-audio';
   return 'disabled';
 }
@@ -122,6 +141,24 @@ function getWhisperChildEnv() {
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/api/asr-audio/:filename', async (req, res) => {
+  const filename = path.basename(req.params.filename || '');
+
+  if (!/^[a-f0-9-]+\.[a-z0-9]+$/i.test(filename)) {
+    return res.status(404).end();
+  }
+
+  const filePath = path.join(asrPublicDir, filename);
+  if (!filePath.startsWith(asrPublicDir)) {
+    return res.status(404).end();
+  }
+
+  res.type(getMimeType(path.extname(filename)));
+  res.sendFile(filePath, (error) => {
+    if (error && !res.headersSent) res.status(404).end();
+  });
+});
 
 function requireAccess(req, res, next) {
   if (!accessPassword) {
@@ -147,8 +184,14 @@ app.get('/api/health', (_req, res) => {
     textModel,
     speechMode,
     speechConfigured: speechMode !== 'disabled',
-    transcribeModel: remoteTranscribeModel || null,
-    transcribeTimeoutMs: speechMode === 'openai-audio' ? remoteTranscribeTimeoutMs : null,
+    transcribeProvider: speechMode,
+    transcribeModel: getActiveTranscribeModel(),
+    transcribeTimeoutMs:
+      speechMode === 'dashscope-fun-asr'
+        ? dashscopeAsrTimeoutMs
+        : speechMode === 'openai-audio'
+          ? remoteTranscribeTimeoutMs
+          : null,
     localWhisper: localWhisperEnabled
       ? {
           engine: localWhisperEngine,
@@ -209,7 +252,7 @@ app.post('/api/transcribe-translate', requireAccess, upload.single('audio'), asy
     }
 
     const variant = req.body?.variant || 'auto';
-    const transcription = await transcribeAudio(uploadedPath, req.file);
+    const transcription = await transcribeAudio(uploadedPath, req.file, req);
     const speechResult = await interpretSpeechResult({
       transcription,
       variant
@@ -229,12 +272,173 @@ app.post('/api/transcribe-translate', requireAccess, upload.single('audio'), asy
   }
 });
 
-async function transcribeAudio(filePath, file) {
+async function transcribeAudio(filePath, file, req) {
   if (localWhisperEnabled) {
     return transcribeWithLocalWhisper(filePath, file);
   }
 
+  if (speechMode === 'dashscope-fun-asr') {
+    return transcribeWithDashScopeFunAsr(filePath, file, getPublicBaseUrl(req));
+  }
+
   return transcribeWithOpenAIAudio(filePath);
+}
+
+function getActiveTranscribeModel() {
+  if (speechMode === 'dashscope-fun-asr') return dashscopeAsrModel;
+  return remoteTranscribeModel || null;
+}
+
+function getPublicBaseUrl(req) {
+  const configuredUrl = process.env.APP_PUBLIC_URL || process.env.PUBLIC_BASE_URL;
+  if (configuredUrl) return normalizeBaseUrl(configuredUrl);
+  return `${req.protocol}://${req.get('host')}`;
+}
+
+async function transcribeWithDashScopeFunAsr(filePath, file, publicBaseUrl) {
+  if (!dashscopeApiKey) {
+    throw new Error('请先配置 DASHSCOPE_API_KEY 或 TRANSCRIBE_API_KEY。');
+  }
+
+  const publicAudio = await createPublicAudioFile(filePath, file);
+
+  try {
+    const fileUrl = `${publicBaseUrl}/api/asr-audio/${publicAudio.filename}`;
+    const taskId = await submitDashScopeAsrTask(fileUrl);
+    const resultUrl = await waitForDashScopeAsrResult(taskId);
+    const result = await fetchJson(resultUrl);
+    const text = extractDashScopeText(result);
+
+    if (!text) {
+      throw new Error('Fun-ASR 没有返回可用的识别文本，请换一段更清晰的录音再试。');
+    }
+
+    return text;
+  } finally {
+    fs.promises.unlink(publicAudio.path).catch(() => {});
+  }
+}
+
+async function createPublicAudioFile(filePath, file) {
+  await fs.promises.mkdir(asrPublicDir, { recursive: true });
+  const extension = getAudioExtension(file);
+  const filename = `${crypto.randomUUID()}${extension}`;
+  const publicPath = path.join(asrPublicDir, filename);
+  await fs.promises.copyFile(filePath, publicPath);
+  return { filename, path: publicPath };
+}
+
+async function submitDashScopeAsrTask(fileUrl) {
+  const payload = {
+    model: dashscopeAsrModel,
+    input: {
+      file_urls: [fileUrl]
+    },
+    parameters: {
+      channel_id: [0]
+    }
+  };
+  const data = await dashscopePostJson('/services/audio/asr/transcription', payload, {
+    'X-DashScope-Async': 'enable'
+  });
+  const taskId = data?.output?.task_id;
+
+  if (!taskId) {
+    throw new Error(`Fun-ASR 任务提交失败：${JSON.stringify(data).slice(0, 500)}`);
+  }
+
+  return taskId;
+}
+
+async function waitForDashScopeAsrResult(taskId) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < dashscopeAsrTimeoutMs) {
+    const data = await dashscopeGetJson(`/tasks/${encodeURIComponent(taskId)}`);
+    const output = data?.output || data;
+    const status = output?.task_status;
+
+    if (status === 'SUCCEEDED') {
+      const result = output.results?.find((item) => item.subtask_status === 'SUCCEEDED');
+      if (result?.transcription_url) return result.transcription_url;
+
+      const failed = output.results?.find((item) => item.subtask_status === 'FAILED');
+      throw new Error(failed?.message || 'Fun-ASR 任务完成，但没有返回 transcription_url。');
+    }
+
+    if (status === 'FAILED') {
+      const detail = output?.message || output?.results?.[0]?.message || JSON.stringify(data).slice(0, 500);
+      throw new Error(`Fun-ASR 识别失败：${detail}`);
+    }
+
+    await delay(1000);
+  }
+
+  throw new Error(`Fun-ASR 识别超过 ${Math.round(dashscopeAsrTimeoutMs / 1000)} 秒没有返回。`);
+}
+
+async function dashscopePostJson(pathname, payload = null, extraHeaders = {}) {
+  const response = await fetch(`${dashscopeBaseUrl}${pathname}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${dashscopeApiKey}`,
+      'Content-Type': 'application/json',
+      ...extraHeaders
+    },
+    ...(payload ? { body: JSON.stringify(payload) } : {})
+  });
+  const text = await response.text();
+  const data = text ? parseJsonObject(text) : {};
+
+  if (!response.ok) {
+    throw new Error(`Fun-ASR 接口错误 ${response.status}：${data.message || data.code || text}`);
+  }
+
+  return data;
+}
+
+async function dashscopeGetJson(pathname) {
+  const response = await fetch(`${dashscopeBaseUrl}${pathname}`, {
+    headers: {
+      Authorization: `Bearer ${dashscopeApiKey}`
+    }
+  });
+  const text = await response.text();
+  const data = text ? parseJsonObject(text) : {};
+
+  if (!response.ok) {
+    throw new Error(`Fun-ASR 接口错误 ${response.status}：${data.message || data.code || text}`);
+  }
+
+  return data;
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url);
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`下载 Fun-ASR 结果失败 ${response.status}：${text.slice(0, 300)}`);
+  }
+
+  return parseJsonObject(text);
+}
+
+function extractDashScopeText(result) {
+  const texts = [];
+
+  for (const transcript of result?.transcripts || []) {
+    if (transcript.text) texts.push(transcript.text);
+    for (const sentence of transcript.sentences || []) {
+      if (!transcript.text && sentence.text) texts.push(sentence.text);
+    }
+  }
+
+  return texts.join('\n').trim();
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function transcribeWithOpenAIAudio(filePath) {
@@ -393,6 +597,19 @@ function getAudioExtension(file) {
   ]);
 
   return mimeToExtension.get(file?.mimetype) || '.webm';
+}
+
+function getMimeType(extension) {
+  const extensionToMime = new Map([
+    ['.mp3', 'audio/mpeg'],
+    ['.m4a', 'audio/mp4'],
+    ['.mp4', 'audio/mp4'],
+    ['.wav', 'audio/wav'],
+    ['.webm', 'audio/webm'],
+    ['.ogg', 'audio/ogg']
+  ]);
+
+  return extensionToMime.get(String(extension || '').toLowerCase()) || 'application/octet-stream';
 }
 
 async function readWhisperTranscript(workDir) {
