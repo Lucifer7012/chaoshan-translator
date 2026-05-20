@@ -698,22 +698,21 @@ async function readStreamedChatContent(stream) {
 }
 
 async function interpretSpeechResult({ transcription, variant }) {
-  const translated = await translateText({
-    text: transcription,
-    direction: 'mandarin-to-chaoshan',
+  const translated = await interpretChaoshanSpeechText({
+    transcription,
     variant
   });
   const notes = [
-    `普通话释义：${transcription}`,
-    '这条“语义转写（普通话）”是本地 Whisper 对潮汕话语音的意思还原，不一定保留原样写法。',
-    translated.notes ? String(translated.notes) : ''
+    translated.notes ? String(translated.notes) : '',
+    `语音识别原文：${transcription}`,
+    '语音识别原文可能包含同音误识别；上方结果会按上下文做谨慎纠错。'
   ]
     .filter(Boolean)
     .join('\n');
 
   return {
-    detectedLanguage: '潮汕话语音',
-    sourceText: transcription,
+    detectedLanguage: translated.detectedLanguage || '潮汕话语音',
+    sourceText: translated.sourceText || transcription,
     translatedText: translated.translatedText || transcription,
     pronunciation: translated.pronunciation || '',
     notes,
@@ -726,6 +725,43 @@ async function interpretSpeechResult({ transcription, variant }) {
       notes: '释义与说明'
     }
   };
+}
+
+async function interpretChaoshanSpeechText({ transcription, variant }) {
+  const system = [
+    '你是一个严谨的潮汕话语音后处理与翻译助手。',
+    '输入来自 ASR 语音识别，可能把潮汕话、普通话或混合口语听错成同音字、人名或奇怪词。',
+    '请先根据上下文谨慎纠错，再给出普通话语义转写和自然的潮汕话近似写法。',
+    '常见纠错规则：在“喂/欸/诶”之后出现“陆浩、路好、李好、你好”等近音时，若上下文是问候，应优先理解为“你好/汝好”，不要当成人名；只有明确是在称呼某个人时才保留人名。',
+    '不要编造音频里没有的实质信息；不确定时在 notes 说明。',
+    '输出必须是严格 JSON/json，不要使用 Markdown。',
+    '字段：detectedLanguage, sourceText, translatedText, pronunciation, notes, confidence。',
+    'sourceText 必须写纠错后的自然普通话语义，不要写方言转写。',
+    'translatedText 必须写潮汕话近似汉字表达。',
+    '示例：ASR 原文“喂，陆浩。汝今晚啥时倒来？”应理解为 sourceText“喂，你好，你今晚什么时候回来？”，translatedText“喂，汝好，汝今暝底时转来？”。',
+    'pronunciation 写潮汕话读音或拼音式近似。',
+    'confidence 是 0 到 1 的数字。'
+  ].join('\n');
+
+  const user = [
+    '请只返回一个合法 json 对象。',
+    `方言区域偏好：${variant || 'auto'}`,
+    `ASR 原文：${transcription}`
+  ].join('\n');
+
+  const response = await openai.chat.completions.create({
+    model: textModel,
+    temperature: 0.1,
+    response_format: { type: 'json_object' },
+    stream: true,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user }
+    ]
+  });
+
+  const content = await readStreamedChatContent(response);
+  return normalizeResult(parseJsonObject(content), transcription);
 }
 
 function normalizeResult(result, fallbackText) {
