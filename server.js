@@ -733,12 +733,14 @@ async function interpretChaoshanSpeechText({ transcription, variant }) {
     '输入来自 ASR 语音识别，可能把潮汕话、普通话或混合口语听错成同音字、人名或奇怪词。',
     '请先根据上下文谨慎纠错，再给出普通话语义转写和自然的潮汕话近似写法。',
     '常见纠错规则：在“喂/欸/诶”之后出现“陆浩、路好、李好、你好”等近音时，若上下文是问候，应优先理解为“你好/汝好”，不要当成人名；只有明确是在称呼某个人时才保留人名。',
+    '人称纠错规则：潮汕话 wa/ua/瓦/我 表示“我”，wang/uang/阮/俺/我们 表示“我们”。如果 ASR 把“wa”识别成“我们/阮/俺”，但句子是单个说话人的个人动作或计划，例如“wa 现在要去洗碗了”，必须纠正为“我现在要去洗碗了”，不要写成“我们”。只有语境明确包含多人或发音明显是 wang/阮/俺时，才写“我们”。',
     '不要编造音频里没有的实质信息；不确定时在 notes 说明。',
     '输出必须是严格 JSON/json，不要使用 Markdown。',
     '字段：detectedLanguage, sourceText, translatedText, pronunciation, notes, confidence。',
     'sourceText 必须写纠错后的自然普通话语义，不要写方言转写。',
     'translatedText 必须写潮汕话近似汉字表达。',
     '示例：ASR 原文“喂，陆浩。汝今晚啥时倒来？”应理解为 sourceText“喂，你好，你今晚什么时候回来？”，translatedText“喂，汝好，汝今暝底时转来？”。',
+    '示例：ASR 原文“我们现在要去洗碗了”若来自潮汕话且上下文是 wa 单数，应理解为 sourceText“我现在要去洗碗了”，translatedText“我/瓦这阵欲去洗碗了”。',
     'pronunciation 写潮汕话读音或拼音式近似。',
     'confidence 是 0 到 1 的数字。'
   ].join('\n');
