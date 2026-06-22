@@ -38,7 +38,7 @@ Render 里应配置以下变量。不要把真实值写进 GitHub。
 
 ```env
 OPENAI_API_KEY=文字模型供应商 key
-OPENAI_BASE_URL=http://43.166.202.16:3000/v1
+OPENAI_BASE_URL=https://olapi.olinkdata.com/v1
 OPENAI_MODEL=gpt-5.5
 APP_PASSWORD=访问密码
 
@@ -74,4 +74,3 @@ LOCAL_WHISPER_ENABLED=false
 - 增加“识别原文 / 纠错后普通话 / 潮汕话写法”三栏显示，方便定位是 ASR 错还是翻译错。
 - 增加简单使用次数统计，观察 API 消耗。
 - 如果使用人数变多，改成更正式的登录或邀请码。
-

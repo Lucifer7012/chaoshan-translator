@@ -11,6 +11,12 @@
 
 ## 记录
 
+### 2026-06-22 - 更新文字模型供应商地址
+
+- 问题：需要把文字模型 OpenAI 兼容接口地址切换到新的供应商地址。
+- 修复：将示例配置和项目状态文档中的 `OPENAI_BASE_URL` 更新为 `https://olapi.olinkdata.com/v1`。
+- 注意：线上 Render 环境变量也需要手动同步修改，代码仓库里的 `.env.example` 不会自动影响 Render。
+
 ### 2026-05-20 - 改进 wa / wang 人称纠错
 
 - 提交：`7497978 Improve wa wang speech correction`
@@ -53,4 +59,3 @@
 
 - 提交：`e0f8583 Deploy chaoshan translator`
 - 内容：整理当前 Express 应用、前端页面、密码保护、Render 部署配置和模型默认配置。
-

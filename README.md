@@ -25,7 +25,7 @@ http://localhost:5173
 
 ```env
 OPENAI_API_KEY=你的文字模型 API Key
-OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_BASE_URL=https://olapi.olinkdata.com/v1
 OPENAI_MODEL=gpt-5.5
 APP_PASSWORD=给朋友使用的访问密码
 
