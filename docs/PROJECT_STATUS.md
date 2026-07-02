@@ -38,7 +38,7 @@ Render 里应配置以下变量。不要把真实值写进 GitHub。
 
 ```env
 OPENAI_API_KEY=文字模型供应商 key
-OPENAI_BASE_URL=https://olapi.olinkdata.com/v1
+OPENAI_BASE_URL=https://apilink.olinkdata.com/v1
 OPENAI_MODEL=gpt-5.5
 APP_PASSWORD=访问密码
 
